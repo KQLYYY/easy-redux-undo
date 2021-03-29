@@ -1,6 +1,6 @@
 {
   "name": "easy-redux-undo-history",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "The easy way to add undo/redo in redux with the implementation of history",
   "main": "./lib/index.js",
   "scripts": {
