@@ -1,6 +1,7 @@
 import {
   createAction
 } from "@reduxjs/toolkit";
+import { now } from "lodash";
 const _ = require("lodash");
 const diff = require("deep-diff").diff;
 
@@ -380,8 +381,12 @@ const undoable = function(reducer, options = {}) {
 
         let totalHistory = 0
         let inGroup = false
-        let newPast = [{ lib: actionDiff, dev: action.historyPayload }]
-        let data = { lib: actionDiff, dev: action.historyPayload }
+        const historyPayloadWithTs = {
+          ts: Date.now(),
+          ...action.historyPayload
+        }
+        let newPast = [{ lib: actionDiff, dev: historyPayloadWithTs }]
+        let data = { lib: actionDiff, dev: historyPayloadWithTs }
         // let newPastStory = [action.type]
 
         // If we have a group that hasn't closed, don't count it's
