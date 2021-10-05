@@ -1,9 +1,8 @@
-import {
-  createAction
-} from "@reduxjs/toolkit";
-import { now } from "lodash";
-const _ = require("lodash");
-const diff = require("deep-diff").diff;
+import { createAction } from '@reduxjs/toolkit'
+import getDeepDiffItem from './getDeepDiffItem'
+import getDeepDiff from './getDeepDiff'
+const _ = require('lodash')
+const diff = require('deep-diff').diff
 
 const WRAPKEY = '__wrapper'
 const DEBUGPREPEND = '[easy-redux-undo]=>'
@@ -27,10 +26,14 @@ const defaultOptions = {
   groupBeginType: GROUPBEGINACTION,
   groupEndType: GROUPENDACTION,
   include: [],
-  exclude: []
+  exclude: [],
+  cloneDeepFunc: _.cloneDeep
 }
 
-const undoable = function(reducer, options = {}) {
+export const getLibData = (obj) => obj.lib
+export const getDevData = (obj) => obj.dev
+
+const undoable = function (reducer, options = {}) {
   options = Object.assign(defaultOptions, options)
 
   if (options.include.length > 0 && options.exclude.length > 0) {
@@ -49,7 +52,7 @@ const undoable = function(reducer, options = {}) {
    * @param {object} updPresent The previous present from a prior undo call, if calling undo for the first time, this value should be undefined
    * @param {object} updFuture The previous future from a prior undo call, if calling undo for the first time, this value should be undefined
    */
-  const undo = function(
+  const undo = function (
     past,
     present,
     future,
@@ -79,7 +82,9 @@ const undoable = function(reducer, options = {}) {
 
       // Throw if didn't find closed group
       if (startIndex === 0 && getLibData(newPast[startIndex]) !== options.groupBeginType) {
-        throw `${DEBUGPREPEND} did not find a closed group of actions to undo, did you forget to send a '${options.groupBeginType}' action?`
+        throw new Error(
+          `${DEBUGPREPEND} did not find a closed group of actions to undo, did you forget to send a '${options.groupBeginType}' action?`
+        )
       }
 
       // Store all changes as part of this group to undo
@@ -154,7 +159,7 @@ const undoable = function(reducer, options = {}) {
    * @param {object} updPresent The previous present from a prior redo call, if calling redo for the first time, this value should be undefined
    * @param {object} updFuture The previous future from a prior redo call, if calling redo for the first time, this value should be undefined
    */
-  const redo = function(
+  const redo = function (
     past,
     present,
     future,
@@ -186,7 +191,9 @@ const undoable = function(reducer, options = {}) {
         endIndex === newFuture.length - 1 &&
         getLibData(newFuture[endIndex]) !== options.groupBeginType
       ) {
-        throw `${DEBUGPREPEND} did not find a closed group of actions to redo, something must have went wrong!`
+        throw new Error(
+          `${DEBUGPREPEND} did not find a closed group of actions to redo, something must have went wrong!`
+        )
       }
 
       // Store all changes as part of this group to undo
@@ -252,12 +259,9 @@ const undoable = function(reducer, options = {}) {
     }
   }
 
-  const getLibData = (obj) => obj.lib
-  const getDevData = (obj) => obj.dev
-
   // return a reducer that handles undo and redo
-  return function(state = {}, action) {
-    const { past, present, future } = state
+  return function (state = {}, action) {
+    const { past, present, future, groupBeginState } = state
 
     // If we are calling this reducer for the first time,
     // present will not have a value and we should return
@@ -277,28 +281,27 @@ const undoable = function(reducer, options = {}) {
 
     switch (action.type) {
       case options.groupBeginType: {
+        const groupBeginState = options.cloneDeepFunc(present)
         return {
           past: [...past, { lib: options.groupBeginType, dev: options.groupBeginType }],
           present,
-          future
+          future,
+          groupBeginState
         }
       }
       case options.groupEndType: {
-        if (past[past.length - 1] === options.groupBeginType) {
-          console.warn(
-            `${DEBUGPREPEND} did not add '${options.groupEndType}' action; detected that the previous action was '${options.groupBeginType}' - this would result in an empty group!`
-          )
-          break
-        } else {
-          const textContent = action.payload || 'empty payload'
-          const newPast = [...past, { lib: options.groupEndType, dev: textContent }]
-          const newState = {
-            past: newPast,
-            present,
-            future
-          }
-          return newState
+        const textContent = action.payload || 'empty payload'
+        const newPast = [
+          ...past,
+          getDeepDiffItem(groupBeginState, present, options, action),
+          { lib: options.groupEndType, dev: textContent }
+        ]
+        const newState = {
+          past: newPast,
+          present,
+          future
         }
+        return newState
       }
       case options.clearType: {
         return {
@@ -356,38 +359,7 @@ const undoable = function(reducer, options = {}) {
       }
       default: {
         const newPresent = reducer(present, action)
-        let actionDiff
-
-        // If state is an array, deep-diff can't handle
-        // comparing arrays, so we wrap the array in an object
-        if (Array.isArray(newPresent)) {
-          actionDiff = diff(
-            {
-              WRAPKEY: present
-            },
-            {
-              WRAPKEY: newPresent
-            }
-          )
-        } else if (typeof newPresent === 'object') {
-          actionDiff = diff(present, newPresent)
-        }
-
-        // If the action did not alter the state,
-        // return the initial state
-        if (typeof actionDiff === 'undefined') {
-          return state
-        }
-
-        let totalHistory = 0
         let inGroup = false
-        const historyPayloadWithTs = {
-          ts: Date.now(),
-          ...action.historyPayload
-        }
-        let newPast = [{ lib: actionDiff, dev: historyPayloadWithTs }]
-        let data = { lib: actionDiff, dev: historyPayloadWithTs }
-        // let newPastStory = [action.type]
 
         // If we have a group that hasn't closed, don't count it's
         // elements in the total history
@@ -397,6 +369,10 @@ const undoable = function(reducer, options = {}) {
             inGroup = true
             break
           }
+        }
+
+        if (inGroup) {
+          return { past, present: newPresent, future, groupBeginState }
         }
 
         // If we are including/excluding any actions; short-circuit if possible
@@ -412,6 +388,24 @@ const undoable = function(reducer, options = {}) {
             future: future
           }
         }
+
+        // If state is an array, deep-diff can't handle
+        // comparing arrays, so we wrap the array in an object
+        const actionDiff = getDeepDiff(present, newPresent, options)
+
+        // If the action did not alter the state,
+        // return the initial state
+        if (typeof actionDiff === 'undefined') {
+          return state
+        }
+
+        const historyPayloadWithTs = {
+          ts: Date.now(),
+          ...action.historyPayload
+        }
+        let newPast = [{ lib: actionDiff, dev: historyPayloadWithTs }]
+        let data = { lib: actionDiff, dev: historyPayloadWithTs }
+        let totalHistory = 0
 
         // Count up history; truncate any past events if we extend past the maxHistory
         for (let i = past.length - 1; i >= 0; i--) {
