@@ -1,6 +1,7 @@
 import { createAction } from '@reduxjs/toolkit'
 import getDeepDiffItem from './getDeepDiffItem'
 import getDeepDiff from './getDeepDiff'
+import getNewPastWithMaxHistoryCheck from './getNewPastWithMaxHistoryCheck'
 const _ = require('lodash')
 const diff = require('deep-diff').diff
 
@@ -290,18 +291,13 @@ const undoable = function (reducer, options = {}) {
         }
       }
       case options.groupEndType: {
-        const textContent = action.payload || 'empty payload'
-        const newPast = [
-          ...past,
-          getDeepDiffItem(groupBeginState, present, options, action),
-          { lib: options.groupEndType, dev: textContent }
-        ]
-        const newState = {
-          past: newPast,
+        const oldPast = past.slice(0, -1)
+        const newItem = getDeepDiffItem(groupBeginState, present, options, action.payload)
+        return {
+          past: getNewPastWithMaxHistoryCheck(oldPast, newItem, options.maxHistory),
           present,
-          future
+          future: []
         }
-        return newState
       }
       case options.clearType: {
         return {
@@ -403,41 +399,10 @@ const undoable = function (reducer, options = {}) {
           ts: Date.now(),
           ...action.historyPayload
         }
-        let newPast = [{ lib: actionDiff, dev: historyPayloadWithTs }]
-        let data = { lib: actionDiff, dev: historyPayloadWithTs }
-        let totalHistory = 0
-
-        // Count up history; truncate any past events if we extend past the maxHistory
-        for (let i = past.length - 1; i >= 0; i--) {
-          if (getLibData(past[i]) === options.groupEndType) {
-            totalHistory = totalHistory + 1
-            inGroup = true
-          } else if (getLibData(past[i]) === options.groupBeginType) {
-            inGroup = false
-          } else if (!inGroup) totalHistory = totalHistory + 1
-
-          // Truncate past if it exceeds our max history limit
-          if (totalHistory >= options.maxHistory - 1 || i === 0) {
-            // if our index is on a groupend action,
-            // update it to pull the entire group
-            if (getLibData(past[i]) === options.groupEndType) {
-              let j = i
-              for (j; j >= 0; j--) {
-                if (getLibData(past[j]) === options.groupBeginType) {
-                  break
-                }
-              }
-              newPast = [...past.slice(j), data]
-            } else {
-              newPast = [...past.slice(i), data]
-            }
-
-            break
-          }
-        }
+        const newItem = { lib: actionDiff, dev: historyPayloadWithTs }
 
         return {
-          past: newPast,
+          past: getNewPastWithMaxHistoryCheck(past, newItem, options.maxHistory),
           present: newPresent,
           future: []
         }
