@@ -1,13 +1,10 @@
 import getDeepDiff from './getDeepDiff'
 
-const getDeepDiffItem = (present, newPresent, options, action) =>
-  getItemWithDiff(getDeepDiff(present, newPresent, options), action)
-
-const getItemWithDiff = (lib, action) => ({
-  lib,
+const getDeepDiffItem = (present, newPresent, options, devProps) => ({
+  lib: getDeepDiff(present, newPresent, options),
   dev: {
     ts: Date.now(),
-    ...action.historyPayload
+    ...devProps
   }
 })
 
