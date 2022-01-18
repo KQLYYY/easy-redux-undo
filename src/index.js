@@ -44,6 +44,16 @@ const undoable = function (reducer, options = {}) {
     return
   }
 
+  const safeApplyRevertDiff = (fnName, newPresent, libData) => {
+    try {
+      diff[fnName](newPresent, true, libData)
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`diff.${fnName} failed;`, 'state:', newPresent, 'libData:', libData)
+      }
+    }
+  }
+
   /** @description Undos an action in the store, or a group of actions if undo encounters a group
    * @returns {object} An object of the updated state in the store
    * @param {object} past
@@ -120,12 +130,12 @@ const undoable = function (reducer, options = {}) {
     if (undoingGroup) {
       for (let j = 0; j < changesToApply.length; j++) {
         for (let k = 0; k < getLibData(changesToApply[j]).length; k++) {
-          diff.revertChange(newPresent, true, getLibData(changesToApply[j])[k])
+          safeApplyRevertDiff('revertChange', newPresent, getLibData(changesToApply[j])[k])
         }
       }
     } else {
       for (let i = 0; i < getLibData(changesToApply).length; i++) {
-        diff.revertChange(newPresent, true, getLibData(changesToApply)[i])
+        safeApplyRevertDiff('revertChange', newPresent, getLibData(changesToApply)[i])
       }
     }
 
@@ -229,12 +239,12 @@ const undoable = function (reducer, options = {}) {
     if (redoingGroup) {
       for (let j = 0; j < changesToApply.length; j++) {
         for (let k = 0; k < getLibData(changesToApply[j]).length; k++) {
-          diff.applyChange(newPresent, true, getLibData(changesToApply[j])[k])
+          safeApplyRevertDiff('applyChange', newPresent, getLibData(changesToApply[j])[k])
         }
       }
     } else {
       for (let i = 0; i < getLibData(changesToApply).length; i++) {
-        diff.applyChange(newPresent, true, getLibData(changesToApply)[i])
+        safeApplyRevertDiff('applyChange', newPresent, getLibData(changesToApply)[i])
       }
     }
 
